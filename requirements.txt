@@ -5,3 +5,4 @@ pillow
 python-dotenv
 google-genai
 supabase
+tzdata
