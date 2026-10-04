@@ -3,6 +3,6 @@ pandas
 openpyxl
 pillow
 python-dotenv
-google-genai
+google-genai>=2.20.0
 supabase
 tzdata

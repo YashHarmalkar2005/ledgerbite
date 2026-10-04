@@ -9,7 +9,7 @@ import streamlit as st
 
 _import_error = None
 try:
-    from common import supabase, now_local
+    from common import supabase, now_local, gemini, MODELS, USE_VERTEX, GEMINI_API_KEY
     from parse_receipts import extract_receipt, save_receipt
 except Exception as _e:  # missing .env values etc. Shown nicely below, once Streamlit is configured.
     _import_error = _e
@@ -859,19 +859,36 @@ elif menu == NAV_UPLOAD:
     if saved_msg:
         st.success(saved_msg)
 
+    with st.expander("Connection check (use this if reading a receipt fails)"):
+        import importlib.metadata as _md
+        try:
+            _sdk = _md.version("google-genai")
+        except Exception:
+            _sdk = "unknown"
+        st.caption(
+            f"google-genai {_sdk} · key starts with `{GEMINI_API_KEY[:3]}` and is {len(GEMINI_API_KEY)} characters long · "
+            f"route: {'Vertex AI' if USE_VERTEX else 'Gemini API'} · model: {MODELS[0]}"
+        )
+        if st.button("Test Gemini connection"):
+            try:
+                gemini.models.generate_content(model=MODELS[0], contents="Reply with the single word OK")
+                st.success(f"Gemini works with {MODELS[0]}.")
+            except Exception as e:
+                st.error(str(e)[:500])
+
     recipe_type = st.selectbox(
         "What are you logging?",
         ["Raw Materials (Expense / Supplier Bill)", "Dishes Served (Revenue / Sales Order)"],
     )
     category = "Raw Material (Expense)" if "Raw Materials" in recipe_type else "Customer Sale (Revenue)"
 
-    uploaded_file = st.file_uploader("Receipt image or voice note", type=["png", "jpg", "jpeg", "webp", "mp3", "wav", "m4a"])
+    uploaded_file = st.file_uploader("Receipt image or voice note", type=["png", "jpg", "jpeg", "webp", "mp3", "wav", "m4a", "aac", "ogg", "flac"])
 
     if uploaded_file is None:
         st.session_state.pop("pending_entry", None)
     else:
         file_ext = os.path.splitext(uploaded_file.name)[1].lower().lstrip(".")
-        is_audio = file_ext in ("mp3", "wav", "m4a")
+        is_audio = file_ext in ("mp3", "wav", "m4a", "aac", "ogg", "flac")
         file_sig = f"{uploaded_file.name}:{uploaded_file.size}:{category}"
 
         if st.button("Read entry"):

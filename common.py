@@ -37,7 +37,10 @@ GEMINI_API_KEY = _require("GEMINI_API_KEY")
 SUPABASE_URL = _require("SUPABASE_URL").rstrip("/")
 SUPABASE_KEY = _require("SUPABASE_KEY")
 
-gemini = genai.Client(api_key=GEMINI_API_KEY)
+# New-style "AQ." keys are rejected on some accounts (401 ACCESS_TOKEN_TYPE_UNSUPPORTED).
+# If that happens to you, try GEMINI_USE_VERTEX=true in .env to send the key through Google's Vertex AI route.
+USE_VERTEX = os.getenv("GEMINI_USE_VERTEX", "").strip().lower() in ("1", "true", "yes")
+gemini = genai.Client(vertexai=True, api_key=GEMINI_API_KEY) if USE_VERTEX else genai.Client(api_key=GEMINI_API_KEY)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
@@ -47,25 +50,21 @@ def clean_json_text(text: str) -> str:
     return re.sub(r"\s*```$", "", text)
 
 
-def upload_media(path: str):
-    """Upload an audio file and wait until Gemini has finished processing it."""
-    f = gemini.files.upload(file=path)
-    for _ in range(30):
-        state = getattr(getattr(f, "state", None), "name", None)
-        if state != "PROCESSING":
-            break
-        time.sleep(2)
-        f = gemini.files.get(name=f.name)
-    if getattr(getattr(f, "state", None), "name", None) == "FAILED":
-        raise RuntimeError("Gemini could not process the audio file.")
-    return f
+AUDIO_MIME = {"mp3": "audio/mp3", "wav": "audio/wav", "m4a": "audio/aac", "aac": "audio/aac",
+              "ogg": "audio/ogg", "flac": "audio/flac"}
+MAX_AUDIO_BYTES = 15 * 1024 * 1024
 
 
-def delete_media(f) -> None:
-    try:
-        gemini.files.delete(name=f.name)
-    except Exception:
-        pass
+def audio_part(path: str):
+    """Send the audio inside the request itself. The separate Files API needs a different kind of
+    credential than a normal API key, and a short voice note doesn't need it."""
+    ext = os.path.splitext(path)[1].lower().lstrip(".")
+    if ext not in AUDIO_MIME:
+        raise ValueError(f"Unsupported audio type '.{ext}'. Use mp3, wav, aac, ogg or flac.")
+    if os.path.getsize(path) > MAX_AUDIO_BYTES:
+        raise ValueError("This voice note is too large (limit 15 MB). Record a shorter one.")
+    with open(path, "rb") as f:
+        return types.Part.from_bytes(data=f.read(), mime_type=AUDIO_MIME[ext])
 
 
 def generate_json(contents: list, prompt: str) -> dict:
@@ -93,4 +92,10 @@ def generate_json(contents: list, prompt: str) -> dict:
                     time.sleep(attempt * 3)
                     continue
                 break  # bad model name, bad key, bad request: retrying won't help, try the next model
+    if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in str(last_err):
+        raise RuntimeError(
+            "Google rejected the Gemini API key (401 ACCESS_TOKEN_TYPE_UNSUPPORTED). This is a key or account problem, "
+            "not a problem with your receipt. Update google-genai, create a fresh key in a NEW project in AI Studio, "
+            "or try GEMINI_USE_VERTEX=true."
+        )
     raise RuntimeError(f"Gemini couldn't read this file ({type(last_err).__name__}: {last_err})")

@@ -11,9 +11,7 @@ from datetime import datetime
 
 from PIL import Image
 
-from common import (
-    delete_media, generate_json, now_local, supabase, upload_media,
-)
+from common import audio_part, generate_json, now_local, supabase
 
 PRICE_TOLERANCE = 0.25                                   # warn if billed price is >25% off the menu price
 LARGE_AMOUNT = float(os.getenv("LARGE_AMOUNT", "50000"))  # warn on any single amount above this (₹)
@@ -217,12 +215,8 @@ def extract_receipt(file_path, receipt_category="Auto-Detect", is_audio=False):
     today, now_time = now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S")
     menu = load_menu()
 
-    media = upload_media(file_path) if is_audio else Image.open(file_path)
-    try:
-        raw = generate_json([media], build_prompt(today, menu))
-    finally:
-        if is_audio:
-            delete_media(media)
+    media = audio_part(file_path) if is_audio else Image.open(file_path)
+    raw = generate_json([media], build_prompt(today, menu))
 
     data = normalise(raw, receipt_category, today, now_time)
     return data, check_receipt(data, menu)

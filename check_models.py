@@ -8,7 +8,9 @@ key = (os.getenv("GEMINI_API_KEY") or "").strip()
 if not key:
     raise SystemExit("GEMINI_API_KEY is missing from .env")
 
-client = genai.Client(api_key=key)
+use_vertex = (os.getenv("GEMINI_USE_VERTEX") or "").strip().lower() in ("1", "true", "yes")
+client = genai.Client(vertexai=True, api_key=key) if use_vertex else genai.Client(api_key=key)
+print("Route:", "Vertex AI" if use_vertex else "Gemini Developer API", f"| key starts with: {key[:3]}...\n")
 print("Available models on your API key:\n")
 for m in client.models.list():
     print(f" - {(m.name or str(m)).replace('models/', '')}")
