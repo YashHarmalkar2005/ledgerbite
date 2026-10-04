@@ -870,11 +870,20 @@ elif menu == NAV_UPLOAD:
             f"route: {'Vertex AI' if USE_VERTEX else 'Gemini API'} · model: {MODELS[0]}"
         )
         if st.button("Test Gemini connection"):
-            try:
-                gemini.models.generate_content(model=MODELS[0], contents="Reply with the single word OK")
-                st.success(f"Gemini works with {MODELS[0]}.")
-            except Exception as e:
-                st.error(str(e)[:500])
+            results = []
+            for _m in MODELS:
+                try:
+                    gemini.models.generate_content(model=_m, contents="Reply with the single word OK")
+                    results.append((_m, None))
+                except Exception as e:
+                    results.append((_m, str(e)[:300]))
+            for _m, _err in results:
+                if _err is None:
+                    st.success(f"{_m}: works.")
+                elif "503" in _err or "UNAVAILABLE" in _err:
+                    st.warning(f"{_m}: Google is busy right now (temporary). Your key is fine. Try again in a minute.")
+                else:
+                    st.error(f"{_m}: {_err}")
 
     recipe_type = st.selectbox(
         "What are you logging?",

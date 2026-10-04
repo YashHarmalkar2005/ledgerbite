@@ -71,7 +71,7 @@ def generate_json(contents: list, prompt: str) -> dict:
     """Try each model in turn. Retry only on temporary errors; surface the real error if all fail."""
     last_err = None
     for model in MODELS:
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):   # busy servers (503) usually recover within a few seconds
             try:
                 resp = gemini.models.generate_content(
                     model=model,
@@ -89,9 +89,12 @@ def generate_json(contents: list, prompt: str) -> dict:
             except Exception as err:
                 last_err = err
                 if any(tok in str(err) for tok in RETRYABLE):
-                    time.sleep(attempt * 3)
+                    time.sleep(attempt * 4)
                     continue
                 break  # bad model name, bad key, bad request: retrying won't help, try the next model
+    if any(tok in str(last_err) for tok in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED")):
+        raise RuntimeError("Google's Gemini servers are busy right now. Nothing is wrong with your receipt or key. "
+                           "Wait a minute and press Read entry again.")
     if "ACCESS_TOKEN_TYPE_UNSUPPORTED" in str(last_err):
         raise RuntimeError(
             "Google rejected the Gemini API key (401 ACCESS_TOKEN_TYPE_UNSUPPORTED). This is a key or account problem, "
